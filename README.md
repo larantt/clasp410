@@ -1,6 +1,9 @@
 # clasp410
 Contains coursework from CLaSP 410 (Earth System Modelling)
 
+## Classwork
+Contains classwork examples for various modelling problems
+
 ## Labs
 | Lab    |   Title                           | Description                   |
 | :---:  |    :----:                         |     :---:                     |
