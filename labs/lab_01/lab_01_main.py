@@ -19,7 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 # Let's import an object for creating our own special color map:
 from matplotlib.colors import ListedColormap
-from matplotlib import animation
+import matplotlib.patches as mpatches
 
 #############
 ## GLOBALS ##
@@ -50,6 +50,8 @@ idxmask = np.array([[0, 1, 0],
                     [0, 1, 0]])
 
 frames = []
+out = f'{outpath}/gridsize_{nx}_{ny}'
+
 ###############
 ## FUNCTIONS ##
 ###############
@@ -110,13 +112,17 @@ def gen_burn_mask(center,mask=idxmask,array=forest,p_spread=prob_spread):
     new_mask = np.copy(mask)
     # get grid surrounding 2 x 2 grid cell
     new_vals = array[center[0]-1:center[0]+2,center[1]-1:center[1]+2]
+
     # create mask dictating fire spread by comparing to random 3x3 array
     new_mask[(new_mask == 1) & (np.random.random((3,3)) < p_spread)] = 9 # arbitrary index
+
     new_vals[(new_mask == 9) & (new_vals == 2)] = 3 # set all values where the mask is burning to 3
-    array[center[0],center[1]] = 0 # set center to 0 (burnt on this iteration)
+    new_vals[(new_mask == 0) & (new_vals == 2)] = 2 # preserve numbering convention
+    array[center[0],center[1]] = 1 # set center to 1 (burnt on this iteration)
+    
     return new_vals
 
-def plot_frames(frame):
+def plot_frames(frame,iter):
     """
     Creates a pcolor matrix plot representing the state of the 
     forest fire spread in a given forest.
@@ -125,27 +131,77 @@ def plot_frames(frame):
     ----------
     frame : np.ndarray
         2D numpy array representing the state of the forest at one timestep
+    iter : int
+        iteration of forest fire simulation
     
     Returns
     -------
     fig : plt.Figure
         pcolor figure showing the state of the fire at a given time
     """
+    # define colormap
     forest_cmap = ListedColormap(['tan', 'darkgreen', 'crimson'])
+    
+    # set up figure and axes
     fig, ax = plt.subplots(1,1)
+    
+    # plot data at each frame
     ax.pcolor(frame, cmap=forest_cmap, vmin=1, vmax=3)
-    return fig
+    # generate legend
+    burning = mpatches.Patch(color='crimson',label='Burning')
+    forested = mpatches.Patch(color='darkgreen',label='Forested')
+    bare = mpatches.Patch(color='tan',label='Bare')
+    plt.legend(handles=[burning,forested,bare])
+    
+    # format figure
+    ax.set_title(f'Forest State at Iteration {iter}, ({nx} x {ny} grid)')
+    fig.savefig(f'{out}/forest_iter{iter}.png')
+
+
+def summary_stats(frame):
+    """
+    """
+    # plot line plot with number of cells at each state at each iteration
+    burning = (frame == 3).sum()
+    forested = (frame == 2).sum()
+    bare = (frame == 1).sum()
+    val_dict = { "bare" : bare, "forested" : forested, "burning" : burning}
+    return val_dict
+    
+    # plot time to spread the fire as a function of p_spread & p_bare
+
+def timeseries_plot(ts):
+    fig, ax = plt.subplots(1,1)
+    ax.plot([idx for idx,dat in enumerate(ts)],
+            [dat["bare"] for idx,dat in enumerate(ts)],
+            label='Bare',c='tan')
+    ax.plot([idx for idx,dat in enumerate(ts)],
+            [dat["forested"] for idx,dat in enumerate(ts)],
+            label='Forested',c='darkgreen')
+    ax.plot([idx for idx,dat in enumerate(ts)],
+            [dat["burning"] for idx,dat in enumerate(ts)],
+            label='Burning',c='crimson')
+    
+    ax.set_title(f"Forest Burn Evolution with Time ({nx} x {ny} grid)")
+    ax.set_xlabel("Time (iterations)")
+    ax.set_ylabel("Number of Burning Cells")
+    
+    ax.legend()
+    fig.savefig(f'{out}/burntime.png')
 
 def main():
     """
-    Main function for execution of forest fire simulation
+    Executes a full simulation
     """
+    iters = []
     # time code
     st = time.time()
-    out = f'{outpath}/gridsize_{nx}_{ny}'
+
     if not os.path.exists(out):
         os.mkdir(out)
+   
     # loop over the forest until no more burning cells
+    ctr = 0 # counter to keep track of while loop and pass into plots
     while 3 in forest:
         # locate index of centers where forest is burning (forest = 3)
         burning_cells = np.asarray(np.where(forest==3)).T.tolist()
@@ -153,16 +209,17 @@ def main():
         for center in burning_cells:
             # spread the fire at each center
             spread_fire(forest,np.array([center]))
+       
         # append this to a list of frames
-        frames.append(plot_frames(forest[1:-1,1:-1]))
+        frames.append(plot_frames(forest[1:-1,1:-1],ctr))   # plot frames to show forest state at each iteration
+        iters.append(summary_stats(forest[1:-1,1:-1]))  # generate summary statistics of each forest fire
+        
+        ctr += 1 # iterate counter
     
-    # save all figures
-    for idx,frame in enumerate(frames):
-        frame.savefig(f'{out}/forest_iter{idx}.png')
-        plt.close()
-    
+    timeseries_plot(iters)
     et = time.time()
     elapsed_time = et - st
+
     print('Execution time:', elapsed_time, 'seconds')
 
 
